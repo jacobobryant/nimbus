@@ -1,0 +1,23 @@
+{:paths ["src" "resources" "target/resources"]
+ :deps {com.biffweb/biff                    {:local/root ".."}
+        camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
+        metosin/muuntaja                    {:mvn/version "0.6.8"}
+        ring/ring-defaults                  {:mvn/version "0.3.4"}
+        org.clojure/clojure                 {:mvn/version "1.11.1"}
+
+        ;; Notes on logging: https://gist.github.com/jacobobryant/76b7a08a07d5ef2cc076b048d078f1f3
+        org.slf4j/slf4j-simple     {:mvn/version "2.0.0-alpha5"}
+        org.slf4j/log4j-over-slf4j {:mvn/version "1.7.36"}
+        org.slf4j/jul-to-slf4j     {:mvn/version "1.7.36"}
+        org.slf4j/jcl-over-slf4j   {:mvn/version "1.7.36"}}
+ :aliases
+ {:dev {:extra-deps {com.biffweb/tasks {:local/root "../libs/tasks"}}
+        :extra-paths ["dev" "test"]
+        :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
+                   "-XX:+CrashOnOutOfMemoryError"
+                   "-Dbiff.env.BIFF_PROFILE=dev"]
+        :main-opts ["-m" "com.biffweb.task-runner" "tasks/tasks"]}
+  :prod {:jvm-opts ["-XX:-OmitStackTraceInFastThrow"
+                    "-XX:+CrashOnOutOfMemoryError"
+                    "-Dbiff.env.BIFF_PROFILE=prod"]
+         :main-opts ["-m" "com.example"]}}}

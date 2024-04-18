@@ -1,0 +1,52 @@
+;; See https://github.com/juxt/aero and https://biffweb.com/docs/api/utilities/#use-aero-config.
+;; #biff/env and #biff/secret will load values from the environment and from config.env.
+{:biff/base-url #profile {:prod #join ["https://" #biff/env DOMAIN]
+                          :default #join ["http://localhost:" #ref [:biff/port]]}
+ :biff/host     #or [#biff/env "HOST"
+                     #profile {:dev "0.0.0.0"
+                               :default "localhost"}]
+ :biff/port     #long #or [#biff/env "PORT" 8080]
+
+ :biff.xtdb/dir          "storage/xtdb"
+ :biff.xtdb/topology     #keyword #or [#profile {:prod #biff/env "PROD_XTDB_TOPOLOGY"
+                                                 :default #biff/env "XTDB_TOPOLOGY"}
+                                       "standalone"]
+ :biff.xtdb.jdbc/jdbcUrl #biff/secret "XTDB_JDBC_URL"
+
+ :biff.beholder/enabled         #profile {:dev true :default false}
+ :biff.middleware/secure        #profile {:dev false :default true}
+ :biff.middleware/cookie-secret #biff/secret COOKIE_SECRET
+ :biff/jwt-secret               #biff/secret JWT_SECRET
+ :biff.refresh/enabled          #profile {:dev true :default false}
+
+ :mailersend/api-key  #biff/secret MAILERSEND_API_KEY
+ :mailersend/from     #biff/env MAILERSEND_FROM
+ :mailersend/reply-to #biff/env MAILERSEND_REPLY_TO
+
+ :recaptcha/secret-key #biff/secret RECAPTCHA_SECRET_KEY
+ :recaptcha/site-key   #biff/env RECAPTCHA_SITE_KEY
+
+ :biff.nrepl/port #or [#biff/env NREPL_PORT "7888"]
+ :biff.nrepl/args ["--port" #ref [:biff.nrepl/port]
+                   "--middleware" "[cider.nrepl/cider-middleware,refactor-nrepl.middleware/wrap-refactor]"]
+
+ :biff.system-properties/user.timezone                 "UTC"
+ :biff.system-properties/clojure.tools.logging.factory "clojure.tools.logging.impl/slf4j-factory"
+
+ :biff.tasks/server                 #biff/env DOMAIN
+ :biff.tasks/main-ns                com.example
+ :biff.tasks/on-soft-deploy         "\"(com.example/on-save @com.example/system)\""
+ :biff.tasks/generate-assets-fn     com.example/generate-assets!
+ :biff.tasks/css-output             "target/resources/public/css/main.css"
+ :biff.tasks/deploy-untracked-files [#ref [:biff.tasks/css-output]
+                                     "config.env"]
+ ;; `clj -M:dev prod-dev` will run the soft-deploy task whenever files in these directories are changed.
+ :biff.tasks/watch-dirs             ["src" "dev" "resources" "test"]
+
+ ;; Uncomment this line if you're on Windows/don't have rsync and your local branch is
+ ;; called main instead of master:
+ ;; :biff.tasks/deploy-cmd ["git" "push" "prod" "main:master"]
+ :biff.tasks/deploy-cmd ["git" "push" "prod" "master"]
+ ;; Uncomment this line if you have any ssh-related problems:
+ ;; :biff.tasks/skip-ssh-agent true
+ }
