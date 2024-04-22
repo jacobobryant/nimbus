@@ -1,5 +1,6 @@
 (ns com.example
-  (:require [com.biffweb :as biff]
+  (:require [com.biffweb.xtdb :as biff-xt]
+            [com.biffweb :as biff]
             [com.example.email :as email]
             [com.example.app :as app]
             [com.example.home :as home]
@@ -12,15 +13,16 @@
             [clojure.tools.namespace.repl :as tn-repl]
             [malli.core :as malc]
             [malli.registry :as malr]
-            [nrepl.cmdline :as nrepl-cmd])
+            [nrepl.cmdline :as nrepl-cmd]
+            [ring.adapter.jetty9 :as jetty])
   (:gen-class))
 
 (def modules
-  [app/module
-   (biff/authentication-module {})
+  [#_app/module
+   #_(biff/authentication-module {})
    home/module
-   schema/module
-   worker/module])
+   #_schema/module
+   #_worker/module])
 
 (def routes [["" {:middleware [mid/wrap-site-defaults]}
               (keep :routes modules)]
@@ -56,16 +58,17 @@
    :biff/malli-opts #'malli-opts
    :biff.beholder/on-save #'on-save
    :biff.middleware/on-error #'ui/on-error
-   :biff.xtdb/tx-fns biff/tx-fns
+   ;:biff.xtdb/tx-fns biff/tx-fns
    :com.example/chat-clients (atom #{})})
 
 (defonce system (atom {}))
 
 (def components
   [biff/use-aero-config
-   biff/use-xtdb
+   biff-xt/use-xtdb
+   ;biff/use-xtdb
    biff/use-queues
-   biff/use-xtdb-tx-listener
+   ;biff/use-xtdb-tx-listener
    biff/use-htmx-refresh
    biff/use-jetty
    biff/use-chime

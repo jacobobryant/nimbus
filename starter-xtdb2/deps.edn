@@ -1,5 +1,10 @@
 {:paths ["src" "resources" "target/resources"]
- :deps {com.biffweb/biff                    {:local/root ".."}
+ :mvn/repos {"ossrh-snapshots" {:url "https://s01.oss.sonatype.org/content/repositories/snapshots"}}
+ :deps {com.biffweb/biff                    {:local/root ".."
+                                             :exclusions [com.xtdb/xtdb-core
+                                                          com.xtdb/xtdb-jdbc
+                                                          com.xtdb/xtdb/rocksdb]}
+        cxm.biffweb/biff-xtdb2              {:local/root "../libs/xtdb2"}
         camel-snake-kebab/camel-snake-kebab {:mvn/version "0.4.3"}
         metosin/muuntaja                    {:mvn/version "0.6.8"}
         ring/ring-defaults                  {:mvn/version "0.3.4"}
@@ -11,13 +16,17 @@
         org.slf4j/jul-to-slf4j     {:mvn/version "1.7.36"}
         org.slf4j/jcl-over-slf4j   {:mvn/version "1.7.36"}}
  :aliases
- {:dev {:extra-deps {com.biffweb/tasks {:local/root "../libs/tasks"}}
+ {:run {:extra-deps {com.biffweb/tasks {:local/root "../libs/tasks"}}
         :extra-paths ["dev" "test"]
         :jvm-opts ["-XX:-OmitStackTraceInFastThrow"
                    "-XX:+CrashOnOutOfMemoryError"
+                   "--add-opens=java.base/java.nio=ALL-UNNAMED"
+                   "-Dio.netty.tryReflectionSetAccessible=true"
                    "-Dbiff.env.BIFF_PROFILE=dev"]
         :main-opts ["-m" "com.biffweb.task-runner" "tasks/tasks"]}
   :prod {:jvm-opts ["-XX:-OmitStackTraceInFastThrow"
                     "-XX:+CrashOnOutOfMemoryError"
+                    "--add-opens=java.base/java.nio=ALL-UNNAMED"
+                   "-Dio.netty.tryReflectionSetAccessible=true"
                     "-Dbiff.env.BIFF_PROFILE=prod"]
          :main-opts ["-m" "com.example"]}}}
