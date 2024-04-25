@@ -25,13 +25,26 @@
    :user [:map {:closed true}
           [:xt/id :uuid]
           [:email [:and ::string [:re #".+@.+"]]]
-          [:joined-at {::default #(java.time.Instant/now)} :time/instant]
+          [:joined-at :time/instant]
           [:color {:optional true} ::string]]})
 
 (malr/set-default-registry! (malr/composite-registry
                              (malc/default-schemas)
                              (malt/schemas)
                              new-schema))
+
+(comment
+  (sort (ns-publics 'malli.core))
+  (malc/validate 
+
+   (->> (malc/ast (malc/schema :user))
+        :keys
+        :email
+        :value
+        malc/from-ast)
+   "hey@foo.com"
+   )
+  )
 
 (def module
   {:schema schema})

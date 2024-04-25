@@ -1,11 +1,9 @@
 (ns com.example.auth
   (:require [com.biffweb :as biff]
-            [com.biffweb.xtdb :as bxt]
             [clj-http.client :as http]
             [clojure.string :as str]
             [rum.core :as rum]
-            [xtdb.api :as xt])
-  (:import [java.time Instant]))
+            [xtdb.api :as xt]))
 
 (defn passed-recaptcha? [{:keys [biff/secret biff.recaptcha/threshold params]
                           :or {threshold 0.5}}]
@@ -131,7 +129,7 @@
                           :as ctx}]
   (let [{:keys [success error email user-id]} (send-link! ctx)]
     (when (and success single-opt-in (not user-id))
-      (xt/submit-tx node (new-user-tx email)))
+      (xt/submit-tx node (new-user-tx ctx email)))
     {:status 303
      :headers {"location" (if success
                             (str "/link-sent?email=" (:email params))
@@ -150,7 +148,7 @@
         existing-user-id (when success (get-user-id (xt/db node) email))
         token (:token (merge params path-params))]
     (when (and success (not existing-user-id))
-      (biff/submit-tx ctx (new-user-tx email)))
+      (biff/submit-tx ctx (new-user-tx ctx email)))
     {:status 303
      :headers {"location" (cond
                             success
@@ -182,7 +180,7 @@
                   :biff.auth.code/created-at :db/now
                   :biff.auth.code/failed-attempts 0}]
                 (when (and single-opt-in (not user-id))
-                  (new-user-tx email)))))
+                  (new-user-tx ctx email)))))
     {:status 303
      :headers {"location" (if success
                             (str "/verify-code?email=" (:email params))
@@ -208,7 +206,7 @@
              success
              (concat [[::xt/delete (:xt/id code)]]
                      (when-not existing-user-id
-                       (new-user-tx email)))
+                       (new-user-tx ctx email)))
 
              (and (not success)
                   (some? code)
@@ -233,10 +231,10 @@
 
 ;;; ----------------------------------------------------------------------------
 
-(defn new-user-tx [email]
-  [(bxt/upsert :user {:email email} {:on [:email] :defaults {:joined-at (Instant/now)}})])
-
-(new-user-tx "bob@example.com")
+(defn new-user-tx [ctx email]
+  [{:db/doc-type :user
+    :db.op/upsert {:user/email email}
+    :user/joined-at :db/now}])
 
 (defn get-user-id [db email]
   (biff/lookup-id db :user/email email))

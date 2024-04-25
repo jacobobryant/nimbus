@@ -1,5 +1,6 @@
 (ns repl
   (:require [com.example :as main]
+            [com.biffweb.xtdb :as bxt]
             [com.biffweb :as biff :refer [q]]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -57,36 +58,6 @@
      :prod-secrets (get-secrets prod-config)
      :dev-secrets (get-secrets dev-config)}))
 
-
-(defn bind-template [ks]
-  (into {}
-        (map (fn [k]
-               [k (symbol (str/replace (str k) #"^:" "\\$"))]))
-        ks))
-
-(defn upsert [table document {:keys [on defaults]}]
-  (let [new-doc (merge {:xt/id (random-uuid)} document defaults)
-        _ (when-not (malli/validate table new-doc)
-            (throw (ex-info "Document doesn't match table schema"
-                            {:table table
-                             :document document
-                             :errors (:errors (malli/explain table new-doc))})))
-        query (xt/template (-> (from ~table [~(bind-template on)])
-                               (limit 1)))
-        on-doc (select-keys document on)]
-    [:call :biff/if-exists [query on-doc]
-     [[:update {:table table
-                :bind [(bind-template on)]
-                :set (apply dissoc document on)}
-       on-doc]]
-     [[:put-docs table new-doc]]]))
-
-(def if-exists-tx-fn
-  '(fn if-exists [[query query-args] true-branch false-branch]
-     (if (not-empty (q query {:args query-args}))
-       true-branch
-       false-branch)))
-
 (comment
   ;; Call this function if you make a change to main/initial-system,
   ;; main/components, :tasks, :queues, config.env, or deps.edn.
@@ -107,37 +78,46 @@
   ;; - update dissoc
 
 
-  (first (xt/q node '(from :user [{:email $email}]) {:args {:email "alice@example.com"}}))
+  (first (xt/q node '(from :users [{:email $email}]) {:args {:email "alice@example.com"}}))
 
   (xt/submit-tx node
-    [[:put-docs :user {:xt/id :alice :email "alice@example.com" :color "yellow"}]
-     [:put-docs :user {:xt/id :bob :email "bob@example.com" :color "yellow"}]
+    [[:put-docs :users {:xt/id :alice :email "alice@example.com" :color "yellow"}]
+     [:put-docs :users {:xt/id :bob :email "bob@example.com" :color "yellow"}]
      ])
 
-  (xt/q node '(from :user [*]))
+  (xt/q node '(from :users [*]))
 
-  (xt/submit-tx node [[:delete {:from :user, :bind '[{:email $email}]} {:email "alice@example.com"}]])
+  (xt/submit-tx node [[:delete {:from :users, :bind '[{:email $email}]} {:email "alice@example.com"}]])
   (xt/submit-tx node [[:sql "delete from users where users.email = ?" ["alice@example.com"]]])
 
   (xt/q node "select users.xt$id from users where users.email = ?" {:args ["alice@example.com"]})
   (xt/q node "select * from xt$txs")
 
+  (xt)
+
+  (bxt/submit-tx node
+    [[:put-docs :user {:xt/id :alice :email "alice@example.com" :color "yellow"}]
+     [:biff/upsert :user {:set {:color "brown" :email "alice@example.com"}
+                          :on [:email]
+                          :defaults {:joined-at (Instant/now)}}]])
+
+  (let [users (xt/q node "select users.xt$id from users where users.email = ?" {:args ["alice@example.com"]})
+        tx (if (empty? users)
+             [[:assert-not-exists '(from :users [{:email $email}]) {:email "alice@example.com"}]
+              [:put-docs :users {:xt/id :alice :email "alice@example.com" :color "red"}]]
+             [[:update '{:table :users
+                         :bind [{:email $email}]
+                         :set {:color "green"}}
+               {:email "alice@example.com"}]])]
+    (xt/submit-tx node tx))
+
+  (xt/q node '(from :user [*]))
+
   (xt/submit-tx node
-    [[:put-fn :biff/if-exists if-exists-tx-fn]])
-
-
-  (xt/submit-tx node
-    [(upsert :user
-             {:color "green" :email "alice@example.com"}
-             {:on [:email] :defaults {:joined-at (Instant/now)}})])
-
-  (xt/submit-tx node
-    [[:biff/upsert :user
-      {:color "green" :email "alice@example.com"}
-      {:on [:email] :defaults {:joined-at (Instant/now)}}]])
-
-  ;; TODO have a expand-tx function and/or submit-tx wrapper that handles upsert operations + schema checks all ops
-  ;; (including builtin)? (Then can also deal with any custom ops that return multiple lower-level ops)
+    [[:update '{:table :users
+                :bind [{:email $user/email}]
+                :set {:color "green"}}
+      {:user/email "alice@example.com"}]])
 
 
   ;; Call this in dev if you'd like to add some seed data to your database. If
