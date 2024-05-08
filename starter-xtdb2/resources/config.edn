@@ -5,7 +5,7 @@
  :biff/host     #or [#biff/env "HOST"
                      #profile {:dev "0.0.0.0"
                                :default "localhost"}]
- :biff/port     #long #or [#biff/env "PORT" 8080]
+ :biff/port     #long #or [#biff/env "PORT" 8081]
 
  :biff.xtdb/dir          "storage/xtdb"
  :biff.xtdb/topology     #keyword #or [#profile {:prod #biff/env "PROD_XTDB_TOPOLOGY"
