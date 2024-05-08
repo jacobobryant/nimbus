@@ -1,50 +1,21 @@
-(ns com.example.schema
-  (:require [malli.core :as malc]
-            [malli.registry :as malr]
-            [malli.experimental.time :as malt]))
+(ns com.example.schema)
 
 (def schema
-  {:user/id :uuid
-   :user [:map {:closed true}
-          [:xt/id                     :user/id]
-          [:user/email                :string]
-          [:user/joined-at            inst?]
-          [:user/foo {:optional true} :string]
-          [:user/bar {:optional true} :string]]
-
-   :msg/id :uuid
-   :msg [:map {:closed true}
-         [:xt/id       :msg/id]
-         [:msg/user    :user/id]
-         [:msg/text    :string]
-         [:msg/sent-at inst?]]})
-
-(def new-schema
-  {::string [:string {:min 1 :max 100}]
+  {::short-string [:string {:min 1 :max 100}]
+   ::long-string  [:string {:min 1 :max 5000}]
 
    :user [:map {:closed true}
-          [:xt/id :uuid]
-          [:email [:and ::string [:re #".+@.+"]]]
+          [:xt/id     :uuid]
+          [:email     [:and ::short-string [:re #".+@.+"]]]
           [:joined-at :time/instant]
-          [:color {:optional true} ::string]]})
+          [:foo {:optional true} ::short-string]
+          [:bar {:optional true} ::short-string]]
 
-(malr/set-default-registry! (malr/composite-registry
-                             (malc/default-schemas)
-                             (malt/schemas)
-                             new-schema))
-
-(comment
-  (sort (ns-publics 'malli.core))
-  (malc/validate 
-
-   (->> (malc/ast (malc/schema :user))
-        :keys
-        :email
-        :value
-        malc/from-ast)
-   "hey@foo.com"
-   )
-  )
+   :message [:map {:closed true}
+             [:xt/id   :uuid]
+             [:user    :uuid]
+             [:text    ::long-string]
+             [:sent-at :time/instant]]})
 
 (def module
   {:schema schema})

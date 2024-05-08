@@ -1,6 +1,6 @@
 (ns repl
   (:require [com.example :as main]
-            [com.biffweb.xtdb :as bxt]
+            [com.biffweb.xtdb :as bxt :refer [submit-tx]]
             [com.biffweb :as biff :refer [q]]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -63,9 +63,24 @@
   ;; main/components, :tasks, :queues, config.env, or deps.edn.
   (main/refresh)
 
+  ((:biff/secret (get-context)) :recaptcha/secret)
+  (:recaptcha/site-key (get-context))
+
   (def node (:biff/node (get-context)))
 
   (xt/status node)
+
+  (submit-tx node [[:biff/upsert :user {:set {:email "alice@example.com"
+                                              :color "red"}
+                                        :on [:email]
+                                        :defaults {:joined-at (Instant/now)}}]
+                   [:biff/upsert :user {:set {:email "bob@example.com"
+                                              :color "green"}
+                                        :on [:email]
+                                        :defaults {:joined-at (Instant/now)}}]])
+
+  (:xt/id (xt/q node '(from :user [xt/id {:email $email}])
+                {:args {:email "alice@example.com"}}))
 
   ;; TODO:
   ;; - put with schema check
@@ -78,7 +93,9 @@
   ;; - update dissoc
 
 
-  (first (xt/q node '(from :users [{:email $email}]) {:args {:email "alice@example.com"}}))
+  (first (xt/q node '(from :users [xt/id {:email $email}]) {:args {:email "alice@example.com"}}))
+
+
 
   (xt/submit-tx node
     [[:put-docs :users {:xt/id :alice :email "alice@example.com" :color "yellow"}]

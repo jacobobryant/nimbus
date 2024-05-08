@@ -2,6 +2,7 @@
   (:require [com.biffweb.xtdb :as biff-xt]
             [com.biffweb :as biff]
             [com.example.email :as email]
+            [com.example.auth :as auth]
             [com.example.app :as app]
             [com.example.home :as home]
             [com.example.middleware :as mid]
@@ -12,17 +13,18 @@
             [clojure.tools.logging :as log]
             [clojure.tools.namespace.repl :as tn-repl]
             [malli.core :as malc]
+            [malli.experimental.time :as malt]
             [malli.registry :as malr]
             [nrepl.cmdline :as nrepl-cmd]
             [ring.adapter.jetty9 :as jetty])
   (:gen-class))
 
 (def modules
-  [#_app/module
-   #_(biff/authentication-module {})
+  [app/module
+   (auth/module {})
    home/module
-   #_schema/module
-   #_worker/module])
+   schema/module
+   worker/module])
 
 (def routes [["" {:middleware [mid/wrap-site-defaults]}
               (keep :routes modules)]
@@ -46,16 +48,15 @@
   (biff/catchall (require 'com.example-test))
   (test/run-all-tests #"com.example.*-test"))
 
-(def malli-opts
-  {:registry (malr/composite-registry
-              malc/default-registry
-              (apply biff/safe-merge (keep :schema modules)))})
+(malr/set-default-registry! (malr/composite-registry
+                             (malc/default-schemas)
+                             (malt/schemas)
+                             (apply biff/safe-merge (keep :schema modules))))
 
 (def initial-system
   {:biff/modules #'modules
    :biff/send-email #'email/send-email
    :biff/handler #'handler
-   :biff/malli-opts #'malli-opts
    :biff.beholder/on-save #'on-save
    :biff.middleware/on-error #'ui/on-error
    ;:biff.xtdb/tx-fns biff/tx-fns

@@ -1,9 +1,10 @@
 (ns com.example.auth
   (:require [com.biffweb :as biff]
+            [com.biffweb.xtdb :as bxt :refer [submit-tx]]
             [clj-http.client :as http]
             [clojure.string :as str]
-            [rum.core :as rum]
-            [xtdb.api :as xt]))
+            [rum.core :as rum])
+  (:import [java.time Instant]))
 
 (defn passed-recaptcha? [{:keys [biff/secret biff.recaptcha/threshold params]
                           :or {threshold 0.5}}]
@@ -45,14 +46,14 @@
             (.nextInt rng (dec (int (Math/pow 10 length)))))))
 
 (defn send-link! [{:keys [biff.auth/email-validator
-                          biff/db
+                          biff/node
                           biff.auth/get-user-id
                           biff/send-email
                           params]
                    :as ctx}]
   (let [email (biff/normalize-email (:email params))
         url (new-link ctx email)
-        user-id (delay (get-user-id db email))]
+        user-id (delay (get-user-id node email))]
     (cond
       (not (passed-recaptcha? ctx))
       {:success false :error "recaptcha"}
@@ -94,14 +95,14 @@
       {:success false :error "invalid-state"})))
 
 (defn send-code! [{:keys [biff.auth/email-validator
-                          biff/db
                           biff/send-email
+                          biff/node
                           biff.auth/get-user-id
                           params]
                    :as ctx}]
   (let [email (biff/normalize-email (:email params))
         code (new-code 6)
-        user-id (delay (get-user-id db email))]
+        user-id (delay (get-user-id node email))]
     (cond
       (not (passed-recaptcha? ctx))
       {:success false :error "recaptcha"}
@@ -124,12 +125,11 @@
 (defn send-link-handler [{:keys [biff.auth/single-opt-in
                                  biff.auth/new-user-tx
                                  biff/node
-                                 biff/db
                                  params]
                           :as ctx}]
   (let [{:keys [success error email user-id]} (send-link! ctx)]
     (when (and success single-opt-in (not user-id))
-      (xt/submit-tx node (new-user-tx ctx email)))
+      (submit-tx node (new-user-tx ctx email)))
     {:status 303
      :headers {"location" (if success
                             (str "/link-sent?email=" (:email params))
@@ -139,16 +139,16 @@
                                    biff.auth/invalid-link-path
                                    biff.auth/new-user-tx
                                    biff.auth/get-user-id
-                                   biff.xtdb/node
+                                   biff/node
                                    session
                                    params
                                    path-params]
                             :as ctx}]
   (let [{:keys [success error email]} (verify-link ctx)
-        existing-user-id (when success (get-user-id (xt/db node) email))
+        existing-user-id (when success (get-user-id node email))
         token (:token (merge params path-params))]
     (when (and success (not existing-user-id))
-      (biff/submit-tx ctx (new-user-tx ctx email)))
+      (submit-tx node (new-user-tx ctx email)))
     {:status 303
      :headers {"location" (cond
                             success
@@ -163,24 +163,22 @@
                             :else
                             invalid-link-path)}
      :session (cond-> session
-                success (assoc :uid (or existing-user-id
-                                        (get-user-id (xt/db node) email))))}))
+                success (assoc :uid (or existing-user-id (get-user-id node email))))}))
 
 (defn send-code-handler [{:keys [biff.auth/single-opt-in
                                  biff.auth/new-user-tx
-                                 biff/db
+                                 biff/node
                                  params]
                           :as ctx}]
   (let [{:keys [success error email code user-id]} (send-code! ctx)]
     (when success
-      (biff/submit-tx (assoc ctx :biff.xtdb/retry false)
-        (concat [{:db/doc-type :biff.auth/code
-                  :db.op/upsert {:biff.auth.code/email email}
-                  :biff.auth.code/code code
-                  :biff.auth.code/created-at :db/now
-                  :biff.auth.code/failed-attempts 0}]
-                (when (and single-opt-in (not user-id))
-                  (new-user-tx ctx email)))))
+      (submit-tx node
+        (into [[:biff/upsert :biff.auth/code {:email email}
+                {:set {:code code
+                       :created-at (Instant/now)
+                       :failed-attempts 0}}]]
+              (when (and single-opt-in (not user-id))
+                (new-user-tx ctx email)))))
     {:status 303
      :headers {"location" (if success
                             (str "/verify-code?email=" (:email params))
@@ -189,38 +187,36 @@
 (defn verify-code-handler [{:keys [biff.auth/app-path
                                    biff.auth/new-user-tx
                                    biff.auth/get-user-id
-                                   biff.xtdb/node
-                                   biff/db
+                                   biff/node
                                    params
                                    session]
                             :as ctx}]
   (let [email (biff/normalize-email (:email params))
-        code (biff/lookup db :biff.auth.code/email email)
+        code (bxt/lookup node :biff.auth/code :email email)
         success (and (passed-recaptcha? ctx)
                      (some? code)
-                     (< (:biff.auth.code/failed-attempts code) 3)
-                     (not (biff/elapsed? (:biff.auth.code/created-at code) :now 3 :minutes))
-                     (= (:code params) (:biff.auth.code/code code)))
-        existing-user-id (when success (get-user-id db email))
+                     (< (:failed-attempts code) 3)
+                     (not (biff/elapsed? (:created-at code) :now 3 :minutes))
+                     (= (:code params) (:code code)))
+        existing-user-id (when success (get-user-id node email))
         tx (cond
              success
-             (concat [[::xt/delete (:xt/id code)]]
-                     (when-not existing-user-id
-                       (new-user-tx ctx email)))
+             (into [[:biff/delete :user (:xt/id code)]]
+                   (when-not existing-user-id
+                     (new-user-tx ctx email)))
 
              (and (not success)
                   (some? code)
-                  (< (:biff.auth.code/failed-attempts code) 3))
-             [{:db/doc-type :biff.auth/code
-               :db/op :update
-               :xt/id (:xt/id code)
-               :biff.auth.code/failed-attempts [:db/add 1]}])]
-    (biff/submit-tx ctx tx)
+                  (< (:failed-attempts code) 3))
+             [[:update '{:table :biff.auth/code
+                         :bind [{:xt/id $id} failed-attempts]
+                         :set {:failed-attempts (+ failed-attempts 1)}}
+               {:id (:xt/id code)}]])]
+    (submit-tx node tx)
     (if success
       {:status 303
        :headers {"location" app-path}
-       :session (assoc session :uid (or existing-user-id
-                                        (get-user-id (xt/db node) email)))}
+       :session (assoc session :uid (or existing-user-id (get-user-id node email)))}
       {:status 303
        :headers {"location" (str "/verify-code?error=invalid-code&email=" email)}})))
 
@@ -232,12 +228,10 @@
 ;;; ----------------------------------------------------------------------------
 
 (defn new-user-tx [ctx email]
-  [{:db/doc-type :user
-    :db.op/upsert {:user/email email}
-    :user/joined-at :db/now}])
+  [[:biff/upsert :user {:email email} {:defaults {:joined-at (Instant/now)}}]])
 
-(defn get-user-id [db email]
-  (biff/lookup-id db :user/email email))
+(defn get-user-id [node email]
+  (bxt/lookup-id node :user :email email))
 
 (def default-options
   #:biff.auth{:app-path "/app"
@@ -253,13 +247,13 @@
     (handler (merge options ctx))))
 
 (defn module [options]
-  {:schema {:biff.auth.code/id :uuid
+  {:schema {::short-string [:string {:min 1 :max 100}]
             :biff.auth/code [:map {:closed true}
-                             [:xt/id :biff.auth.code/id]
-                             [:biff.auth.code/email :string]
-                             [:biff.auth.code/code :string]
-                             [:biff.auth.code/created-at inst?]
-                             [:biff.auth.code/failed-attempts integer?]]}
+                             [:xt/id           :uuid]
+                             [:email           ::short-string]
+                             [:code            ::short-string]
+                             [:created-at      :time/instant]
+                             [:failed-attempts integer?]]}
    :routes [["/auth" {:middleware [[wrap-options (merge default-options options)]]}
              ["/send-link"          {:post send-link-handler}]
              ["/verify-link/:token" {:get verify-link-handler}]

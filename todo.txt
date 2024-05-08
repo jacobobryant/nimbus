@@ -1,0 +1,3 @@
+- finish making app work
+- auto wrap ws fns in biff/catchall?
+- cleanup, push, write a blog post
